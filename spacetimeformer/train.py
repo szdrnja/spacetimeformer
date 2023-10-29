@@ -1,7 +1,5 @@
 from argparse import ArgumentParser
-import random
 import sys
-import warnings
 import os
 import uuid
 
@@ -49,7 +47,9 @@ def create_parser():
     parser.add_argument("model")
     parser.add_argument("dset")
 
-    if dset == "precip":
+    if dset == "custom":
+        stf.data.custom.CustomData.add_cli(parser)
+    elif dset == "precip":
         stf.data.precip.GeoDset.add_cli(parser)
         stf.data.precip.CONUS_Precip.add_cli(parser)
     elif dset == "metr-la" or dset == "pems-bay":
@@ -118,8 +118,9 @@ def create_parser():
     return parser
 
 
-def create_model(config):
-    x_dim, yc_dim, yt_dim = None, None, None
+def create_model(config, x_dim, yc_dim, yt_dim):
+    # do not overwrite dims for custom dataset
+    # \todo: remove overwrites for other dataset types
     if config.dset == "metr-la":
         x_dim = 2
         yc_dim = 207
@@ -387,6 +388,19 @@ def create_dset(config):
     PLOT_VAR_IDXS = None
     PLOT_VAR_NAMES = None
     PAD_VAL = None
+
+    if config.dset == "custom":
+        data = stf.data.custom.CustomData(config.data_path)
+        DATA_MODULE = stf.data.DataModule(
+            datasetCls=stf.data.custom.CustomDataTorch,
+            dataset_kwargs={"data": data},
+            batch_size=config.batch_size,
+            workers=config.workers,
+            overfit=args.overfit,
+        )
+        INV_SCALER = data.inverse_scale
+        SCALER = data.scale
+        NULL_VAL = 0.0
 
     if config.dset == "metr-la" or config.dset == "pems-bay":
         if config.dset == "pems-bay":
@@ -772,17 +786,23 @@ def main(args):
         pad_val,
     ) = create_dset(args)
 
+    test_sample = next(iter(data_module.test_dataloader()))
+    x_c_test, y_c_test, x_t_test, y_t_test = test_sample
+
     # Model
     args.null_value = null_val
     args.pad_value = pad_val
-    forecaster = create_model(args)
+    forecaster = create_model(args,
+                            x_dim=x_c_test.shape[-1],
+                            yc_dim=y_c_test.shape[-1],
+                            yt_dim=y_t_test.shape[-1])
     forecaster.set_inv_scaler(inv_scaler)
     forecaster.set_scaler(scaler)
     forecaster.set_null_value(null_val)
 
     # Callbacks
     callbacks = create_callbacks(args, save_dir=log_dir)
-    test_samples = next(iter(data_module.test_dataloader()))
+
 
     if args.wandb and args.plot:
         callbacks.append(

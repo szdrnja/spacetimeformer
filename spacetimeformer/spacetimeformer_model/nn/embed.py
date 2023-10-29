@@ -1,8 +1,10 @@
+"""
+    Module that implements necessary classes for embedding in SpaceTimeFormer
+"""
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange, repeat
-
 
 import spacetimeformer as stf
 
@@ -10,6 +12,11 @@ from .extra_layers import ConvBlock, Flatten
 
 
 class Embedding(nn.Module):
+    """
+    Wrapper around the nn.Embedding module that does temporal
+    or spatio-temporal embedding.
+    """
+
     def __init__(
         self,
         d_y,
@@ -30,6 +37,27 @@ class Embedding(nn.Module):
         use_space: bool = True,
         use_given: bool = True,
     ):
+        """
+        @param d_y: embedding input dimension
+        @param d_x: time dimension (:, 2) - datetime and day of week (normalized to [-1, 1])
+        @param d_model: embedding output dimension
+        @param time_emb_dim: embedding output dimension per time dimension
+            6 by default
+        @param method: embedding method. 'spatio-temporal' or 'temporal'
+        @param downsample_convs: number of conv layers that downsample
+            embedding output. Only takes place if Embedding is_encoder.
+        @param start_token_len: the length of the start token
+        @param null_value: value used as null in data
+        @param pad_value: value used for padding
+        @param is_encoder: whether the Embedder is used as an encoder
+        @param position_emb: type of embedding. ['tv2', 'abs']
+        @param data_dropout: dropout method
+        @param max_seq_len: size of the dictionary of embeddings (24 for pems)
+        @param use_val: whether or not to use values
+        @param use_time: whether or not to use time
+        @param use_space: whether or not to use space
+        @param use_given: whether or not to use given embedding
+        """
         super().__init__()
 
         assert method in ["spatio-temporal", "temporal"]
@@ -48,19 +76,26 @@ class Embedding(nn.Module):
         self.position_emb = position_emb
         if self.position_emb == "t2v":
             # standard periodic pos emb but w/ learnable coeffs
-            self.local_emb = stf.Time2Vec(1, embed_dim=d_model + 1)
+            self.local_emb = stf.Time2Vec(
+                1,
+                embed_dim=d_model + 1,
+            )
         elif self.position_emb == "abs":
             # lookup-based learnable pos emb
             assert max_seq_len is not None
             self.local_emb = nn.Embedding(
-                num_embeddings=max_seq_len, embedding_dim=d_model
+                num_embeddings=max_seq_len,
+                embedding_dim=d_model,
             )
 
         y_emb_inp_dim = d_y if self.method == "temporal" else 1
         self.val_time_emb = nn.Linear(y_emb_inp_dim + time_dim, d_model)
 
         if self.method == "spatio-temporal":
-            self.space_emb = nn.Embedding(num_embeddings=d_y, embedding_dim=d_model)
+            self.space_emb = nn.Embedding(
+                num_embeddings=d_y,
+                embedding_dim=d_model,
+            )
             split_length_into = d_y
         else:
             split_length_into = 1
@@ -68,7 +103,7 @@ class Embedding(nn.Module):
         self.start_token_len = start_token_len
         self.given_emb = nn.Embedding(num_embeddings=2, embedding_dim=d_model)
 
-        self.downsize_convs = nn.ModuleList(
+        self.downsample_convs = nn.ModuleList(
             [ConvBlock(split_length_into, d_model) for _ in range(downsample_convs)]
         )
 
@@ -147,7 +182,7 @@ class Embedding(nn.Module):
 
         if self.is_encoder:
             # shorten the sequence
-            for i, conv in enumerate(self.downsize_convs):
+            for i, conv in enumerate(self.downsample_convs):
                 emb = conv(emb)
 
         # space emb not used for temporal method
@@ -156,6 +191,12 @@ class Embedding(nn.Module):
         return emb, space_emb, var_idxs, mask
 
     def spatio_temporal_embed(self, y: torch.Tensor, x: torch.Tensor):
+        """
+        Does spatio-temporal embedding.
+
+        @param y: tensor that holds the values for embedding
+        @param x: tensor that holds the spatio-temporal data
+        """
         # full spatiotemopral emb method. lots of shape rearrange code
         # here to create artifically long (length x dim) spatiotemporal sequence
         batch, length, dy = y.shape
@@ -176,6 +217,7 @@ class Embedding(nn.Module):
         # time emb
         if not self.use_time:
             x = torch.zeros_like(x)
+
         x = torch.nan_to_num(x)
         x = repeat(x, f"batch len x_dim -> batch ({dy} len) x_dim")
         time_emb = self.time_emb(x)
@@ -225,7 +267,7 @@ class Embedding(nn.Module):
         val_time_emb = local_emb + val_time_emb + given_emb
 
         if self.is_encoder:
-            for conv in self.downsize_convs:
+            for conv in self.downsample_convs:
                 val_time_emb = conv(val_time_emb)
                 length //= 2
 

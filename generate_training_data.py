@@ -9,23 +9,23 @@ import os
 import pandas as pd
 
 
-def generate_graph_seq2seq_io_data(df,
-                                   x_offsets,
-                                   y_offsets,
+def generate_graph_seq2seq_io_data(df: pd.DataFrame,
+                                   context_offsets: np.array,
+                                   target_offsets: np.array,
                                    add_time_in_day=True,
-                                   add_day_in_week=False,
+                                   add_day_in_week=True,
                                    scaler=None):
     """
-    Generate samples from
-    :param df:
-    :param x_offsets:
-    :param y_offsets:
-    :param add_time_in_day:
-    :param add_day_in_week:
-    :param scaler:
-    :return:
-    # x: (epoch_size, input_length, num_nodes, input_dim)
-    # y: (epoch_size, output_length, num_nodes, output_dim)
+    Generates samples from raw data
+    @param df: the timeseries DataFrame to create training dataset from
+    @param context_offsets: the
+    @param target_offsets:
+    @param add_time_in_day:
+    @param add_day_in_week:
+    @param scaler:
+    @return:
+    # x: (N, input_length, num_nodes, input_dim)
+    # y: (N, output_length, num_nodes, output_dim)
     """
 
     num_samples, num_nodes = df.shape
@@ -43,81 +43,74 @@ def generate_graph_seq2seq_io_data(df,
         data_list.append(day_in_week)
 
     data = np.concatenate(data_list, axis=-1)
-    # epoch_len = num_samples + min(x_offsets) - max(y_offsets)
-    x, y = None, None
+
     # t is the index of the last observation.
-    min_t = abs(min(x_offsets))
-    max_t = abs(num_samples - abs(max(y_offsets)))  # Exclusive
-    x = np.empty(shape=([max_t - min_t + 1, len(x_offsets)] +
+    min_t = abs(min(context_offsets))
+    max_t = abs(num_samples - abs(max(target_offsets)))  # Exclusive
+    context = np.empty(shape=([max_t - min_t + 1, len(context_offsets)] +
                         list(data.shape[1:])))
-    y = np.empty(shape=([max_t - min_t + 1, len(y_offsets)] +
+    target = np.empty(shape=([max_t - min_t + 1, len(target_offsets)] +
                         list(data.shape[1:])))
     for t in range(min_t, max_t):
-        x[t - min_t] = data[t + x_offsets, ...]
-        y[t - min_t] = data[t + y_offsets, ...]
+        context[t - min_t] = data[t + context_offsets, ...]
+        target[t - min_t] = data[t + target_offsets, ...]
         if t % 100 == 0:
             print(f"{t}/{max_t - min_t - 1}", end = "\r")
 
-    return x, y
+    return context, target
 
 
 def generate_train_val_test(args):
     df = pd.read_hdf(args.input_filepath)
     # 0 is the latest observed sample.
-    x_offsets = np.sort(
-        # np.concatenate(([-week_size + 1, -day_size + 1], np.arange(-11, 1, 1)))
-        np.concatenate((np.arange(-11, 1, 1), )))
+    context_offsets = np.arange(-11, 1, 1)
     # Predict the next one hour
-    y_offsets = np.sort(np.arange(1, 13, 1))
+    target_offsets = np.arange(1, 13, 1)
     # x: (num_samples, input_length, num_nodes, input_dim)
     # y: (num_samples, output_length, num_nodes, output_dim)
-    x, y = generate_graph_seq2seq_io_data(
+    context_data, target_data = generate_graph_seq2seq_io_data(
         df,
-        x_offsets=x_offsets,
-        y_offsets=y_offsets,
+        context_offsets=context_offsets,
+        target_offsets=target_offsets,
         add_time_in_day=True,
         add_day_in_week=True,
     )
 
-    print("x shape: ", x.shape, ", y shape: ", y.shape)
-    # Write the data into npz file.
-    # num_test = 6831, using the last 6831 examples as testing.
-    # for the rest: 7/8 is used for training, and 1/8 is used for validation.
-    num_samples = x.shape[0]
+    print(f"context_data.shape: {context_data.shape}, target_data.shape: {target_data.shape}")
+
+    num_samples = min([1000, context_data.shape[0]])
     num_test = round(num_samples * 0.2)
     num_train = round(num_samples * 0.7)
     num_val = num_samples - num_test - num_train
 
-    os.makedirs(args.output_dir)
+    os.makedirs(args.output_dir, exist_ok=True)
 
-    # train
-    x_train, y_train = x[:num_train], y[:num_train]
+    context_train, target_train = context_data[:num_train], target_data[:num_train]
     np.savez_compressed(
         os.path.join(args.output_dir, "train.npz"),
-        x=x_train,
-        y=y_train,
-        x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]),
-        y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]))
-    # val
-    x_val, y_val = (
-        x[num_train:num_train + num_val],
-        y[num_train:num_train + num_val],
+        x=context_train,
+        y=target_train,
+        x_offsets=context_offsets.reshape(list(context_offsets.shape) + [1]),
+        y_offsets=target_offsets.reshape(list(target_offsets.shape) + [1]))
+
+    context_val, target_val = (
+        context_data[num_train:num_train + num_val],
+        target_data[num_train:num_train + num_val],
     )
     np.savez_compressed(
         os.path.join(args.output_dir, "val.npz"),
-        x=x_val,
-        y=y_val,
-        x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]),
-        y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]))
+        x=context_val,
+        y=target_val,
+        x_offsets=context_offsets.reshape(list(context_offsets.shape) + [1]),
+        y_offsets=target_offsets.reshape(list(target_offsets.shape) + [1]))
 
-    # test
-    x_test, y_test = x[-num_test:], y[-num_test:]
+    context_test, target_test = context_data[-num_test:], target_data[-num_test:]
     np.savez_compressed(
         os.path.join(args.output_dir, "test.npz"),
-        x=x_test,
-        y=y_test,
-        x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]),
-        y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]))
+        x=context_test,
+        y=target_test,
+        x_offsets=context_offsets.reshape(list(context_offsets.shape) + [1]),
+        y_offsets=target_offsets.reshape(list(target_offsets.shape) + [1]))
 
 
 def main(args):

@@ -72,13 +72,67 @@ class Spacetimeformer(nn.Module):
         recon_mask_drop_full: float = 0.05,
         verbose: bool = True,
     ):
+        """
+        @param d_yc: context y dimension
+            325 for pems
+        @param d_yt: target y dimension
+            325 for pems
+        @param d_x: time dimension
+            2 for pems - time_of_day, day_of_week
+        @param max_seq_len:
+            24 for pems
+        @param attn_factor:
+        @param d_model:
+        @param d_queries_keys:
+        @param d_values:
+        @param n_heads:
+        @param e_layers:
+        @param d_layers:
+        @param d_ff:
+        @param start_token_len:
+        @param time_emb_dim:
+        @param dropout_emb:
+        @param dropout_attn_matrix:
+        @param dropout_attn_out:
+        @param dropout_ff:
+        @param dropout_qkv:
+        @param pos_emb_type:
+        @param global_self_attn:
+        @param local_self_attn:
+        @param global_cross_attn:
+        @param local_cross_attn:
+        @param performer_attn_kernel:
+        @param performer_redraw_interval:
+        @param attn_time_windows:
+        @param use_shifted_time_windows:
+        @param embed_method:
+        @param activation:
+        @param norm:
+        @param use_final_norm:
+        @param initial_downsample_convs:
+        @param intermediate_downsample_convs:
+        @param device:
+        @param null_value:
+        @param pad_value:
+        @param out_dim:
+        @param use_val:
+        @param use_time:
+        @param use_space:
+        @param use_given:
+        @param recon_mask_skip_all:
+        @param recon_mask_max_seq_len:
+        @param recon_mask_drop_seq:
+        @param recon_mask_drop_standard:
+        @param recon_mask_drop_full:
+        @param verbose:
+        """
         super().__init__()
         if e_layers:
             assert intermediate_downsample_convs <= e_layers - 1
         if embed_method == "temporal":
             assert (
                 local_self_attn == "none"
-            ), "local attention not compatible with Temporal-only embedding"
+            ), "Self attention not compatible with Temporal-only embedding"
             assert (
                 local_cross_attn == "none"
             ), "Local Attention not compatible with Temporal-only embedding"
@@ -101,7 +155,7 @@ class Spacetimeformer(nn.Module):
             skip_all_drop=recon_mask_skip_all,
         )
 
-        # embeddings. seperate enc/dec in case the variable indices are not aligned
+        # embeddings. separate enc/dec in case the variable indices are not aligned
         self.enc_embedding = Embedding(
             d_y=d_yc,
             d_x=d_x,
@@ -331,7 +385,6 @@ class Spacetimeformer(nn.Module):
         performer_attn_kernel: str,
         performer_redraw_interval: int,
     ):
-
         if attn_str == "full":
             # standard full (n^2) attention
             Attn = AttentionLayer(

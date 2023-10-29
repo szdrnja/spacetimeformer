@@ -1,10 +1,12 @@
 """
-Reversible Instance Normalization from 
+Reversible Instance Normalization from
 https://github.com/ts-kim/RevIN
 """
 
 import torch
 import torch.nn as nn
+
+from typing import Tuple
 
 
 class MovingAvg(nn.Module):
@@ -24,17 +26,49 @@ class MovingAvg(nn.Module):
 
 
 class SeriesDecomposition(nn.Module):
+    """
+        A given time series is thought to consist of three systematic
+        components including level, trend, seasonality, and one non-systematic
+        component called noise.
+            Level: The average value in the series.
+            Trend: The increasing or decreasing value in the series.
+            Seasonality: The repeating short-term cycle in the series.
+            Noise: The random variation in the series.
+        https://machinelearningmastery.com/decompose-time-series-data-trend-seasonality/
+        https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.seasonal_decompose.html
+
+    """
     def __init__(self, kernel_size):
         super().__init__()
         self.moving_avg = MovingAvg(kernel_size, stride=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+            Adds `x` to the moving average and then removes the
+            Trend (T) from `x` to get Seasonality (S) and Noise (e).
+            Assumes X = T + S + e
+
+            @param x: input
+
+            @returns (res, moving_mean)
+                res: the residue left after removing T
+                moving_mean: the current value of T
+        """
         moving_mean = self.moving_avg(x)
         res = x - moving_mean
         return res, moving_mean
 
 
 class RevIN(nn.Module):
+    """
+        Reversible Instance Normalization for Accurate Time-Series Forecasting
+        against Distribution Shift
+        ref: https://openreview.net/pdf?id=cGDAkQo1C0p
+        Statistical properties such as mean and variance often change over time
+        in time series, i.e., time-series data suffer from a distribution shift
+        problem. This change in temporal distribution is one of the main
+        challenges that prevent accurate timeseries forecasting.
+    """
     def __init__(self, num_features: int, eps=1e-5, affine=True):
         """
         :param num_features: the number of features or channels

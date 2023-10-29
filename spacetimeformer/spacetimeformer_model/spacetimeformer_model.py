@@ -12,9 +12,9 @@ import spacetimeformer as stf
 class Spacetimeformer_Forecaster(stf.Forecaster):
     def __init__(
         self,
+        d_x: int = 4,
         d_yc: int = 1,
         d_yt: int = 1,
-        d_x: int = 4,
         max_seq_len: int = None,
         start_token_len: int = 64,
         attn_factor: int = 5,
@@ -72,6 +72,72 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         recon_mask_drop_full: float = 0.05,
         verbose=True,
     ):
+        """
+            @param d_x: dimension of inputs
+            @param d_yc: dimension of Y context
+            @param d_yt: dimension of Y target
+            @param max_seq_len:
+            @param start_token_len:
+            @param attn_factor:
+            @param d_model:
+            @param d_queries_keys=5
+            @param d_values=5
+            @param n_heads:
+            @param e_layers:
+            @param d_layers:
+            @param d_ff:
+            @param dropout_emb:
+            @param dropout_qkv:
+            @param dropout_ff:
+            @param dropout_attn_out:
+            @param dropout_attn_matrix:
+            @param pos_emb_type:
+            @param global_self_attn:
+            @param local_self_attn:
+            @param global_cross_attn:
+            @param local_cross_attn:
+            @param performer_kernel:
+            @param embed_method:
+            @param performer_relu:
+            @param performer_redraw_interval:
+            @param attn_time_windows:
+            @param use_shifted_time_windows:
+            @param activation:
+            @param norm:
+            @param use_final_norm:
+            @param init_lr:
+            @param base_lr:
+            @param warmup_steps:
+            @param decay_factor:
+            @param initial_downsample_convs:
+            @param intermediate_downsample_convs:
+            @param l2_coeff: the coefficient for the optimizer
+            @param loss: loss function
+            @param class_loss_imp:
+            @param recon_loss_imp:
+            @param time_emb_dim:
+            @param null_value:
+            @param pad_value:
+            @param linear_window: the number of nodes per layer in
+                the LinearModel
+            @param linear_shared_weights: whether the weights are shared
+                between layers of the LinearModel
+            @param use_revin: whether or not to use RevIn. RevIn addressed the
+                problem of distribution skew in time-series data that prevents
+                effective learning.
+            @param use_seasonal_decomp: whether to decompose the time-series
+                data and only look at the seasonality component.
+            @param use_val:
+            @param use_time:
+            @param use_space:
+            @param use_given:
+            @param recon_mask_skip_all:
+            @param recon_mask_max_seq_len:
+            @param recon_mask_drop_seq:
+            @param recon_mask_drop_standard:
+            @param recon_mask_drop_full:
+            @param verbose: show additional logging or not
+        """
         super().__init__(
             d_x=d_x,
             d_yc=d_yc,

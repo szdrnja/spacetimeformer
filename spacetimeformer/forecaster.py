@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import argparse
 from typing import Tuple
 
 import torch
@@ -24,6 +25,24 @@ class Forecaster(pl.LightningModule, ABC):
         use_seasonal_decomp: bool = False,
         verbose: int = True,
     ):
+        """
+        @param d_x: dimension of inputs
+        @param d_yc: dimension of Y context
+        @param d_yt: dimension of Y target
+        @param learning_rate
+        @param l2_coeff: the coefficient for the optimizer
+        @param loss: loss function
+        @param linear_window: the number of nodes per layer in
+            the LinearModel
+        @param linear_shared_weights: whether the weights are shared
+            between layers of the LinearModel
+        @param use_revin: whether or not to use RevIn. RevIn addressed the
+            problem of distribution skew in time-series data that prevents
+            effective learning.
+        @param use_seasonal_decomp: whether to decompose the time-series
+            data and only look at the seasonality component.
+        @param verbose: show additional logging or not
+        """
         super().__init__()
 
         qprint = lambda _msg_: print(_msg_) if verbose else None
@@ -88,7 +107,6 @@ class Forecaster(pl.LightningModule, ABC):
     def loss_fn(
         self, true: torch.Tensor, preds: torch.Tensor, mask: torch.Tensor
     ) -> torch.Tensor:
-
         true = torch.nan_to_num(true)
 
         if self.loss == "mse":
@@ -106,7 +124,6 @@ class Forecaster(pl.LightningModule, ABC):
     def forecasting_loss(
         self, outputs: torch.Tensor, y_t: torch.Tensor, time_mask: int
     ) -> Tuple[torch.Tensor]:
-
         if self.null_value is not None:
             null_mask_mat = y_t != self.null_value
         else:
@@ -267,9 +284,12 @@ class Forecaster(pl.LightningModule, ABC):
                 stat = stat.mean()
             self.log(f"{section}/{key}", stat, sync_dist=True)
 
-    def training_step_end(self, outs):
-        self._log_stats("train", outs)
-        return {"loss": outs["loss"].mean()}
+    def training_step_end(self, step_output):
+        """
+            @param step_output: What you return in `training_step` for each batch part.
+        """
+        self._log_stats("train", step_output)
+        return {"loss": step_output["loss"].mean()}
 
     def validation_step_end(self, outs):
         self._log_stats("val", outs)
@@ -299,16 +319,72 @@ class Forecaster(pl.LightningModule, ABC):
             },
         }
 
-    @classmethod
-    def add_cli(self, parser):
-        parser.add_argument("--gpus", type=int, nargs="+")
-        parser.add_argument("--l2_coeff", type=float, default=1e-6)
-        parser.add_argument("--learning_rate", type=float, default=1e-4)
-        parser.add_argument("--grad_clip_norm", type=float, default=0)
-        parser.add_argument("--linear_window", type=int, default=0)
-        parser.add_argument("--use_revin", action="store_true")
+    @staticmethod
+    def add_cli(parser: argparse.ArgumentParser):
+        """
+        Adds console options for Forecaster.
+
+        @param parser: the parser object to add the
+            arguments to
+        """
         parser.add_argument(
-            "--loss", type=str, default="mse", choices=["mse", "mae", "smape"]
+            "--gpus",
+            type=int,
+            nargs="+",
+            help="GPUs to use",
         )
-        parser.add_argument("--linear_shared_weights", action="store_true")
-        parser.add_argument("--use_seasonal_decomp", action="store_true")
+        default_l2_coeff = 1e-6
+        parser.add_argument(
+            "--l2_coeff",
+            type=float,
+            default=default_l2_coeff,
+            help="The coefficient for the optimizer."
+            f" Defaults to {default_l2_coeff}",
+        )
+        default_lr = 1e-4
+        parser.add_argument(
+            "--learning_rate",
+            type=float,
+            default=default_lr,
+            help=f"The learning rate for the optimizer. Defaults to {default_lr}",
+        )
+        parser.add_argument(
+            "--grad_clip_norm",
+            type=float,
+            default=0,
+            help="Used to prevent exploding gradients."
+            " Clips gradients' global norm to <=grad_clip_norm"
+            " using gradient_clip_algorithm='norm'",
+        )
+        parser.add_argument(
+            "--linear_window",
+            type=int,
+            default=0,
+            help="The number of nodes per layer for the feed-forward LinearModel",
+        )
+        parser.add_argument(
+            "--use_revin",
+            action="store_true",
+            help="Whether or not to use RevIn."
+            " RevIn addresses the problem of distribution skew in"
+            " time-series data that prevents effective learning.",
+        )
+        loss_choices = ["mse", "mae", "smape"]
+        parser.add_argument(
+            "--loss",
+            type=str,
+            default="mse",
+            choices=loss_choices,
+            help=f"The loss function to use. Choices are {loss_choices}",
+        )
+        parser.add_argument(
+            "--linear_shared_weights",
+            action="store_true",
+            help="Whether the layers in the LinearModel share weights",
+        )
+        parser.add_argument(
+            "--use_seasonal_decomp",
+            action="store_true",
+            help="Whether to decompose the time-series"
+            " data and only look at the seasonality component.",
+        )

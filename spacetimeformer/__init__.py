@@ -13,3 +13,4 @@ from . import spacetimeformer_model
 from . import linear_model
 from . import s4_model
 from . import heuristic_model
+from . import logger
