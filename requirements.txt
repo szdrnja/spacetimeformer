@@ -21,3 +21,4 @@ chardet
 opt_einsum
 torchmetrics==0.5.1
 torch==1.11
+torchvision==0.12.0

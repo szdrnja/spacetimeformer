@@ -8,28 +8,29 @@ import torch
 
 import spacetimeformer as stf
 
-_MODELS = ["spacetimeformer", "mtgnn", "heuristic", "lstm", "lstnet", "linear", "s4"]
+_MODELS = ['heuristic', 'linear', 'lstm', 'lstnet', 'mtgnn', 's4', 'spacetimeformer']
 
 _DSETS = [
     "asos",
-    "metr-la",
-    "pems-bay",
+    "cifar",
+    "cont_copy",
+    "copy",
+    "custom",
+    "ettm1",
     "exchange",
+    "hangzhou",
+    "m4",
+    "metr-la",
+    "mnist",
+    "monash",
+    "pems-bay",
     "precip",
-    "toy2",
     "solar_energy",
     "syn",
-    "mnist",
-    "cifar",
-    "copy",
-    "cont_copy",
-    "m4",
-    "wiki",
-    "ettm1",
-    "weather",
-    "monash",
-    "hangzhou",
+    "toy2",
     "traffic",
+    "weather",
+    "wiki",
 ]
 
 
@@ -402,7 +403,7 @@ def create_dset(config):
         SCALER = data.scale
         NULL_VAL = 0.0
 
-    if config.dset == "metr-la" or config.dset == "pems-bay":
+    elif config.dset == "metr-la" or config.dset == "pems-bay":
         if config.dset == "pems-bay":
             assert (
                 "pems_bay" in config.data_path
@@ -792,17 +793,18 @@ def main(args):
     # Model
     args.null_value = null_val
     args.pad_value = pad_val
-    forecaster = create_model(args,
-                            x_dim=x_c_test.shape[-1],
-                            yc_dim=y_c_test.shape[-1],
-                            yt_dim=y_t_test.shape[-1])
+    forecaster = create_model(
+        args,
+        x_dim=x_c_test.shape[-1],
+        yc_dim=y_c_test.shape[-1],
+        yt_dim=y_t_test.shape[-1],
+    )
     forecaster.set_inv_scaler(inv_scaler)
     forecaster.set_scaler(scaler)
     forecaster.set_null_value(null_val)
 
     # Callbacks
     callbacks = create_callbacks(args, save_dir=log_dir)
-
 
     if args.wandb and args.plot:
         callbacks.append(
@@ -833,7 +835,6 @@ def main(args):
         )
 
     if args.wandb and args.model == "spacetimeformer" and args.attn_plot:
-
         callbacks.append(
             stf.plot.AttentionMatrixCallback(
                 test_samples,
